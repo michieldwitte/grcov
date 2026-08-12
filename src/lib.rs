@@ -158,6 +158,14 @@ enum GcovType {
     MultipleFiles,
 }
 
+fn remove_dir_files(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
 macro_rules! try_parse {
     ($v:expr, $f:expr) => {
         match $v {
@@ -194,6 +202,10 @@ pub fn consumer(
                         // GCC
                         if let Err(e) = run_gcov(&gcno_path, branch_enabled, working_dir) {
                             error!("Error when running gcov: {e}");
+                            // gcov writes its output before it bails out on a gcno it
+                            // does not support, so drop it, or the walk below takes it
+                            // for the output of the next gcno.
+                            remove_dir_files(working_dir);
                             continue;
                         };
                         let gcov_ext = get_gcov_output_ext();
