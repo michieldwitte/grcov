@@ -200,6 +200,10 @@ pub fn consumer(
                 match work_item.item {
                     ItemType::Path((stem, gcno_path)) => {
                         // GCC
+                        if let Some(reason) = gcov_cannot_read(&gcno_path) {
+                            error!("Skipping {stem}.gcno: {reason}");
+                            continue;
+                        }
                         if let Err(e) = run_gcov(&gcno_path, branch_enabled, working_dir) {
                             error!("Error when running gcov: {e}");
                             // gcov writes its output before it bails out on a gcno it
