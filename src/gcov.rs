@@ -2,6 +2,8 @@ use lazy_static::lazy_static;
 use semver::Version;
 use std::env;
 use std::fmt;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::process::Command;
 
@@ -94,6 +96,37 @@ pub fn get_gcov_output_ext() -> &'static str {
     &E
 }
 
+/// Major version of the GCC that wrote `gcno`, from the version stamp that follows the
+/// magic. GCC 7 and newer encode the major as a letter plus a digit, before that it is a
+/// single digit followed by the two digits of the minor.
+fn gcno_major(gcno_path: &Path) -> Option<u64> {
+    let mut header: [u8; 8] = [0; 8];
+    File::open(gcno_path).ok()?.read_exact(&mut header).ok()?;
+
+    let stamp: Vec<u8> = match &header[..4] {
+        b"oncg" => header[4..].iter().rev().copied().collect(),
+        b"gcno" => header[4..].to_vec(),
+        _ => return None,
+    };
+
+    match stamp[0] {
+        b'A'..=b'Z' => {
+            Some((stamp[0] - b'A') as u64 * 10 + (stamp[1] as char).to_digit(10)? as u64)
+        }
+        b'0'..=b'9' => Some((stamp[0] as char).to_digit(10)? as u64),
+        _ => None,
+    }
+}
+
+/// Why the gcov we are about to run cannot read `gcno`, if it cannot. gcov only knows
+/// the format of its own major version and, given another one, can spend seconds on it
+/// before it fails or even crashes, so those are better skipped than run.
+pub fn gcov_cannot_read(gcno_path: &Path) -> Option<String> {
+    let major = gcno_major(gcno_path)?;
+    let gcov_major = get_gcov_version().major;
+    (major != gcov_major).then(|| format!("it was written by GCC {major}, not {gcov_major}"))
+}
+
 fn parse_version(gcov_output: &str) -> Version {
     let version = gcov_output
         .split([' ', '\n'])
@@ -124,5 +157,25 @@ mod tests {
         );
         assert_eq!(parse_version("gcov (GCC) 12.2.0"), Version::new(12, 2, 0));
         assert_eq!(parse_version("gcov (GCC) 12.2.0\r"), Version::new(12, 2, 0));
+    }
+
+    #[test]
+    fn test_gcno_major() {
+        for (name, major) in [
+            ("test/reader_gcc-6.gcno", Some(6)),
+            ("test/reader_gcc-7.gcno", Some(7)),
+            ("test/reader_gcc-8.gcno", Some(8)),
+            ("test/reader_gcc-9.gcno", Some(9)),
+            ("test/reader_gcc-10.gcno", Some(10)),
+            ("test/reader_gcc-11.gcno", Some(11)),
+            ("test/reader_gcc-12.gcno", Some(12)),
+            ("test/reader_gcc-15.gcno", Some(15)),
+            // clang writes a gcno of GCC 11.1
+            ("test/reader_clang-22.gcno", Some(11)),
+            ("test/reader_gcc-15.gcda", None),
+            ("test/does_not_exist.gcno", None),
+        ] {
+            assert_eq!(gcno_major(Path::new(name)), major, "{name}");
+        }
     }
 }
