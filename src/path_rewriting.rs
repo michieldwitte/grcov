@@ -422,12 +422,10 @@ pub fn rewrite_paths(
                         return None;
                     }
                 }
-                Some(false) => {
-                    if is_covered(&result) {
-                        return None;
-                    }
+                Some(false) if is_covered(&result) => {
+                    return None;
                 }
-                None => (),
+                _ => (),
             };
 
             Some((abs_path, rel_path, result))

@@ -117,11 +117,9 @@ impl Archive {
                         linked_files_maps.borrow_mut().insert(filename, self);
                     }
                 }
-                "out" => {
-                    if Archive::check_file(file, &Archive::is_go_cov) {
-                        let filename = clean_path(path);
-                        self.insert_vec(filename, gocovs);
-                    }
+                "out" if Archive::check_file(file, &Archive::is_go_cov) => {
+                    let filename = clean_path(path);
+                    self.insert_vec(filename, gocovs);
                 }
                 _ => {}
             }
@@ -153,8 +151,7 @@ impl Archive {
 
     fn is_info(reader: &mut dyn Read) -> bool {
         let mut bytes: [u8; 3] = [0; 3];
-        reader.read_exact(&mut bytes).is_ok()
-            && (bytes == [b'T', b'N', b':'] || bytes == [b'S', b'F', b':'])
+        reader.read_exact(&mut bytes).is_ok() && (bytes == *b"TN:" || bytes == *b"SF:")
     }
 
     fn check_file(file: Option<&mut impl Read>, checker: &dyn Fn(&mut dyn Read) -> bool) -> bool {
